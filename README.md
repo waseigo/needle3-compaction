@@ -1,4 +1,4 @@
-# fast-jev-compaction
+# needle3-compaction
 
 Verbatim context compaction for LLM agents. Replaces the lossy LLM-summary
 compaction with **deletion-based pruning**: every tool call and result is
@@ -68,7 +68,7 @@ fitted throw; the caller (or the Claude Code hook) decides what to fall back to.
 ## Install and usage
 
 ```sh
-npm install fast-jev-compaction
+npm install needle3-compaction
 ```
 
 Two paths:
@@ -78,7 +78,7 @@ Two paths:
   35 MB weights auto-download on first use (or run `npm run download-weights`).
 
 ```ts
-import { compactMessages, reductionRatio, type Message } from 'fast-jev-compaction';
+import { compactMessages, reductionRatio, type Message } from 'needle3-compaction';
 
 const transcript: Message[] = [
   { role: 'user', text: 'Fix the failing test. Never edit src/generated.', toolUses: [] },
@@ -150,7 +150,7 @@ The trade-off is a hard 8192-token context, so the fitted state defaults to
 `maxStateTokens: 7000`.
 
 ```ts
-import { compactMessagesNeedle } from 'fast-jev-compaction';
+import { compactMessagesNeedle } from 'needle3-compaction';
 
 const result = await compactMessagesNeedle(transcript, {
   preserveRecentMessages: 4,
@@ -221,14 +221,14 @@ either from the shell or as slash commands inside a session:
 
 ```sh
 claude plugin marketplace add waseigo/needle3-compaction
-claude plugin install fast-jev-compaction@fast-jev-compaction
+claude plugin install needle3-compaction@needle3-compaction
 ```
 
 The install prompts for the plugin options (API key, thresholds, `truncateHeadChars`,
 …); leave them at their defaults to use `TYPESAFE_API_KEY` from the environment.
 Restart Claude Code or run `/reload-plugins`. From then on `/compact` (and
 auto-compaction) goes through Jev: the toast reads
-`fast-jev-compaction: kept N/M messages, no summary (…)` when the pruned history
+`needle3-compaction: kept N/M messages, no summary (…)` when the pruned history
 replaced the built-in summary, or `fallback to built-in summary (…)` when Jev
 could not remove enough (short sessions, or when it fails).
 

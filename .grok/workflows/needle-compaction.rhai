@@ -14,10 +14,10 @@ if transcript == () {
 
 phase("Compact");
 let compact_out = agent(
-    "You are in the fast-jev-compaction repo (your cwd). Compact the transcript file "
+    "You are in the needle3-compaction repo (your cwd). Compact the transcript file "
         + transcript
         + " using the library's on-device Needle 3 path (no API key). "
-        + "1) Write /tmp/nc.js as an ESM script: import { compactMessagesNeedle } from 'fast-jev-compaction'; "
+        + "1) Write /tmp/nc.js as an ESM script: import { compactMessagesNeedle } from 'needle3-compaction'; "
         + "const fs = require('node:fs'); const t = JSON.parse(fs.readFileSync("
         + json_encode(transcript) + ", 'utf8')); "
         + "const r = await compactMessagesNeedle(t, { preserveRecentMessages: 4 }); "

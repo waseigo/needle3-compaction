@@ -1,5 +1,5 @@
 {
-  "name": "fast-jev-compaction",
+  "name": "needle3-compaction",
   "version": "0.2.0",
   "description": "Continuous, verbatim context compaction for LLM agents — via TypeSafe's Jev (API key) or Cactus Needle 3 on CPU (no key, on-device).",
   "type": "module",

@@ -14,7 +14,7 @@ always re-run a dropped tool.
 
 1. Subscribes to Pi's `session_before_compact` event (auto-compaction or
    `/compact`).
-2. Converts the messages-to-summarize into the `fast-jev-compaction` library's
+2. Converts the messages-to-summarize into the `needle3-compaction` library's
    `Message[]` shape.
 3. Runs `compactMessagesNeedle` (the library's `compact` driven by a
    `NeedleAsker` over the WASM engine). The fitted state is capped at 7000

@@ -16,7 +16,7 @@
 
 import type { ExtensionAPI, SessionBeforeCompactEvent } from '@earendil-works/pi-coding-agent';
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
-import { compactMessagesNeedle, type CompactResult, type Message } from 'fast-jev-compaction';
+import { compactMessagesNeedle, type CompactResult, type Message } from 'needle3-compaction';
 
 /** Needle 3's hard context ceiling; keep the fitted state comfortably under it. */
 const NEEDLE_MAX_STATE_TOKENS = 7000;

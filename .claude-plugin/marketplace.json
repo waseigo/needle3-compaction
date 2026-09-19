@@ -1,14 +1,14 @@
 {
-  "name": "fast-jev-compaction",
+  "name": "needle3-compaction",
   "owner": {
-    "name": "tamaratran",
-    "url": "https://github.com/tamaratran"
+    "name": "waseigo",
+    "url": "https://github.com/waseigo"
   },
   "plugins": [
     {
-      "name": "fast-jev-compaction",
+      "name": "needle3-compaction",
       "source": "./",
-      "description": "Verbatim Jev-guided compaction for Claude Code sessions.",
+      "description": "Verbatim, deletion-based compaction for Claude Code sessions (Jev or Cactus Needle 3).",
       "version": "0.3.0",
       "license": "MIT"
     }

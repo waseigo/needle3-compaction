@@ -1,7 +1,7 @@
 {
   "name": "fast-jev-compaction",
   "version": "0.2.0",
-  "description": "Continuous, verbatim context compaction for LLM agents using TypeSafe's Jev model.",
+  "description": "Continuous, verbatim context compaction for LLM agents — via TypeSafe's Jev (API key) or Cactus Needle 3 on CPU (no key, on-device).",
   "type": "module",
   "license": "MIT",
   "engines": {
@@ -20,16 +20,23 @@
   ],
   "scripts": {
     "build": "tsc",
-    "typecheck": "tsc --noEmit && npm run typecheck:hooks",
+    "typecheck": "tsc --noEmit && npm run typecheck:hooks && npm run typecheck:pi",
+    "typecheck:pi": "tsc -p tsconfig.pi.json",
     "test": "vitest run",
     "demo": "tsx examples/demo.ts",
+    "download-weights": "npm run build && node -e \"(async()=>{const{downloadNeedleWeights}=await import('./dist/needle3.js');console.log('weights ready at '+(await downloadNeedleWeights()))})()\"",
     "typecheck:hooks": "tsc -p tsconfig.hooks.json",
     "validate:plugin": "claude plugin validate .claude-plugin/plugin.json"
   },
   "devDependencies": {
+    "@earendil-works/pi-agent-core": "^0.85.1",
+    "@earendil-works/pi-coding-agent": "^0.85.1",
     "@types/node": "^22.10.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "needle-rs": "^0.3.0"
   }
 }

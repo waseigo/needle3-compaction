@@ -1,18 +1,27 @@
 # fast-jev-compaction
 
-Claude Code plugin that replaces the compaction summary with Jev decisions:
-every tool call and result is scored in one fast request, stale ones are
-dropped or truncated, everything kept stays verbatim. Also usable as an npm
-library.
+Verbatim context compaction for LLM agents. Replaces the lossy LLM-summary
+compaction with **deletion-based pruning**: every tool call and result is
+scored in one fast request, stale ones are dropped or truncated, and everything
+kept stays verbatim. Works as an npm library and a Claude Code plugin.
+
+Driven by one of two "judges":
+
+- **TypeSafe Jev** — a cloud LLM; needs a `TYPESAFE_API_KEY`.
+- **Cactus Needle 3** — a tiny on-device model (~35 MB) that runs on CPU via
+  WebAssembly. No API key, no network, nothing leaves the machine.
+
+This repo is a fork of [tamaratran/fast-jev-compaction](https://github.com/tamaratran/fast-jev-compaction),
+re-pointed at Needle 3 so the compaction runs locally. [Attribution](#attribution).
 
 ## What and why
 
 Most context compaction asks an LLM to summarize old turns. A summary is
 lossy: a file path, exact error, constraint, or command can disappear even when
 it matters later. This library never rewrites anything. It only deletes tool
-calls and tool results Jev says are no longer needed, and it asks Jev while
-showing it the whole conversation. User and assistant text stays verbatim and
-in order.
+calls and tool results the judge says are no longer needed, and it asks the
+judge while showing it the whole conversation. User and assistant text stays
+verbatim and in order.
 
 The repository is both an npm package (`src/`) and a Claude Code plugin
 (`hooks/`, `.claude-plugin/`) that uses the package to replace Claude Code's
@@ -60,8 +69,13 @@ fitted throw; the caller (or the Claude Code hook) decides what to fall back to.
 
 ```sh
 npm install fast-jev-compaction
-export TYPESAFE_API_KEY=...
 ```
+
+Two paths:
+
+- **Jev (cloud)** — set `TYPESAFE_API_KEY` and use `compactMessages`.
+- **Needle 3 (on-device, no key)** — use `compactMessagesNeedle`; the
+  35 MB weights auto-download on first use (or run `npm run download-weights`).
 
 ```ts
 import { compactMessages, reductionRatio, type Message } from 'fast-jev-compaction';
@@ -125,6 +139,66 @@ stage was needed, and the number of requests.
 - The full state is repeated with every request, so a history near the state
   ceiling costs one request per handful of questions.
 
+## Cactus Needle 3 (on-device, no API key)
+
+The Needle 3 path is the focus of this fork. It drives the same deletion-based
+compaction with **Cactus Needle 3** — Cactus Compute's ~121M-parameter, 2-bit,
+on-device tool-calling model — instead of the cloud Jev API. It runs on CPU via
+WebAssembly (`needle-rs`), needs no API key, and never sends your transcript
+anywhere. It works on a Pi 5 (~400–4000 tok/s) or any Node/browser environment.
+The trade-off is a hard 8192-token context, so the fitted state defaults to
+`maxStateTokens: 7000`.
+
+```ts
+import { compactMessagesNeedle } from 'fast-jev-compaction';
+
+const result = await compactMessagesNeedle(transcript, {
+  preserveRecentMessages: 4,
+  // maxStateTokens defaults to 7000 (under Needle 3's 8192 ceiling)
+});
+```
+
+### How the Needle 3 path works
+
+1. The whole conversation is fitted into a state under 7000 tokens (tool results
+   replaced by short `ok, N chars (omitted)` notes, as in the Jev path).
+2. The state is posed to Needle 3 as a single `decide` tool call: for each
+   non-pinned call, return `{ id, keep_call, keep_result }`.
+3. Needle 3's **calibrated confidence head** scores its own answer (0..1). A
+   `keep` lands at `confidence`, a `drop` at `1 − confidence` (no head →
+   `0.9` / `0.1`). That probability is compared to `keepThreshold`.
+4. A call Needle declines to decide is **kept** (conservative): compaction only
+   ever drops what it is confident about.
+
+### Weights
+
+The 35.3 MB `needle3.cact` checkpoint is **not committed** to the repo. It is
+auto-downloaded from [Hugging Face](https://huggingface.co/Cactus-Compute/needle3)
+on first use, or explicitly with:
+
+```sh
+npm run download-weights   # builds, then fetches weights/needle3.cact
+```
+
+To point at a pre-sliced container (lower memory), pass `cactPath` to a `.cact`
+produced by the Needle CLI (`needle build --layers N`).
+
+### Resources
+
+- [needle-rs](https://github.com/geekgineer/needle-rs) — the WASM runtime
+  (browser, Node, Deno, Bun, Cloudflare Workers).
+- [Cactus Compute Needle](https://github.com/cactus-compute/needle) — the model
+  and its Apache-2.0 weights.
+- [Needle 3 weights](https://huggingface.co/Cactus-Compute/needle3) — the
+  `needle3.cact` checkpoint.
+- [Paper](https://arxiv.org/abs/2607.18363) — Needle (arXiv:2607.18363).
+
+## Pi extension (prime target)
+
+`pi/needle-compaction.ts` is a Pi (Earendil Works) extension that replaces Pi's
+lossy summary compaction with the Needle 3 verbatim pruning above. See
+[`pi/README.md`](pi/README.md) for install and usage.
+
 ## Claude Code plugin
 
 The repository root is a Claude Code function-hook plugin: `hooks/fast-jev.ts`
@@ -146,7 +220,7 @@ Then add this repository as a plugin marketplace and install the plugin,
 either from the shell or as slash commands inside a session:
 
 ```sh
-claude plugin marketplace add tamaratran/fast-jev-compaction
+claude plugin marketplace add waseigo/needle3-compaction
 claude plugin install fast-jev-compaction@fast-jev-compaction
 ```
 
@@ -170,6 +244,7 @@ npm run typecheck        # library + hook
 npm test
 npm run build
 npm run validate:plugin  # claude plugin validate
+npm run download-weights # fetch the Needle 3 checkpoint (optional)
 TYPESAFE_API_KEY="$(cat ~/.typesafe_key)" npm run demo
 ```
 
@@ -189,3 +264,18 @@ demo/JevDemo/build.sh   # builds demo/JevDemo/build/JevDemo.app and launches it
 ```
 
 Press space in the app to replay from the start.
+
+## Attribution
+
+This project is a fork of [fast-jev-compaction](https://github.com/tamaratran/fast-jev-compaction)
+by [tamaratran](https://github.com/tamaratran). The original design, the
+deletion-based compaction, the Jev integration, the Claude Code plugin, and much
+of the documentation come from that repository.
+
+This fork re-points the compaction at **Cactus Needle 3** so it runs on-device
+with no API key. The original authors' work is retained and credited; this is a
+derivative project, not a replacement. It is not kept in sync with the upstream
+and no pull requests are being opened back to it.
+
+- Original: [tamaratran/fast-jev-compaction](https://github.com/tamaratran/fast-jev-compaction)
+- This fork: [waseigo/needle3-compaction](https://github.com/waseigo/needle3-compaction)

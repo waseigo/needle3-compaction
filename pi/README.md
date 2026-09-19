@@ -17,8 +17,9 @@ always re-run a dropped tool.
 2. Converts the messages-to-summarize into the `needle3-compaction` library's
    `Message[]` shape.
 3. Runs `compactMessagesNeedle` (the library's `compact` driven by a
-   `NeedleAsker` over the WASM engine). The fitted state is capped at 7000
-   tokens, under Needle 3's hard 8192-token context.
+   `NeedleAsker` over the WASM engine). The fitted state is capped at
+   `NEEDLE_MAX_STATE_TOKENS` (4000) — comfortably under Needle 3's hard
+   8192-token context, which keeps each pass cheap.
 4. Returns a custom compaction whose `summary` is the **verbatim kept messages**
    (formatted in Pi's native `[User]` / `[Assistant]` / `[Tool result]` style),
    plus a header showing what was kept/dropped.
@@ -75,7 +76,7 @@ The extension passes a fixed set of options to the library:
 | Option | Value | Notes |
 | --- | --- | --- |
 | `preserveRecentMessages` | `1` | Only the first message is pinned; the old messages being summarized are all candidates. |
-| `maxStateTokens` | `7000` | Under Needle 3's 8192-token hard ceiling, leaving headroom for the query + tool schema. |
+| `maxStateTokens` | `4000` | Fits under Needle 3's 8192-token ceiling and keeps per-pass cost low; less context in the state than 7000. |
 | `keepThreshold` | `0.5` (default) | Minimum keep probability for a call/result to stay. |
 
 To tune these, edit the constants near the top of `pi/needle-compaction.ts`.

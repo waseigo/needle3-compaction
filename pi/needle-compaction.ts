@@ -18,8 +18,15 @@ import type { ExtensionAPI, SessionBeforeCompactEvent } from '@earendil-works/pi
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import { compactMessagesNeedle, type CompactResult, type Message } from 'needle3-compaction';
 
-/** Needle 3's hard context ceiling; keep the fitted state comfortably under it. */
-const NEEDLE_MAX_STATE_TOKENS = 7000;
+/**
+ * Fitted-state ceiling. Needle 3's hard context is 8192 tokens; 4000 leaves
+ * plenty of headroom for the query + tool schema and keeps each pass cheap
+ * (per-pass cost scales with state size). The trade-off is less context in the
+ * state vs 7000; fast-path decoding (useConfidence: false below) already cuts
+ * the dominant cost, so the smaller state here is what keeps on-device
+ * compaction responsive.
+ */
+const NEEDLE_MAX_STATE_TOKENS = 4000;
 
 /**
  * Pi's `AgentMessage` -> the library's `Message`. Tool uses live on assistant
@@ -134,6 +141,10 @@ export default function (pi: ExtensionAPI) {
         // the library does not protect the newest old messages from pruning.
         preserveRecentMessages: 1,
         maxStateTokens: NEEDLE_MAX_STATE_TOKENS,
+        // Skip the confidence head (run() + confidenceFor()) and keep only the
+        // runJson() pass. Decisions at keepThreshold 0.5 are unchanged; the
+        // reported probabilities fall back to 0.9/0.1.
+        useConfidence: false,
       });
 
       // Not worth it: nothing dropped and no reduction -> let Pi use its default.

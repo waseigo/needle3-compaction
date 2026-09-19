@@ -1,6 +1,5 @@
 node_modules
 dist
 .env
-demo/JevDemo/build
 # ~35 MB Needle 3 checkpoint; auto-downloaded (see src/needle3.ts)
 weights/

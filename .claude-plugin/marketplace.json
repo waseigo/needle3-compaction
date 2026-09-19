@@ -1,16 +1,55 @@
 {
   "name": "needle3-compaction",
-  "owner": {
-    "name": "waseigo",
-    "url": "https://github.com/waseigo"
-  },
-  "plugins": [
-    {
-      "name": "needle3-compaction",
-      "source": "./",
-      "description": "Verbatim, deletion-based compaction for Claude Code sessions (Jev or Cactus Needle 3).",
-      "version": "0.3.0",
-      "license": "MIT"
+  "version": "0.3.0",
+  "description": "Verbatim, deletion-based compaction for Claude Code sessions, driven by Cactus Needle 3 on CPU (no API key).",
+  "license": "MIT",
+  "userConfig": {
+    "keepThreshold": {
+      "type": "number",
+      "title": "Keep threshold",
+      "description": "Minimum keep probability that a tool call or tool result is still needed; below it the item is removed.",
+      "default": 0.5
+    },
+    "preserveRecentMessages": {
+      "type": "number",
+      "title": "Recent messages to preserve",
+      "description": "Number of newest messages pinned from compaction.",
+      "default": 6
+    },
+    "compactAtPercent": {
+      "type": "number",
+      "title": "Compaction percentage",
+      "description": "Context percentage at which turn.complete requests compaction.",
+      "default": 60
+    },
+    "minReductionRatio": {
+      "type": "number",
+      "title": "Minimum reduction ratio",
+      "description": "Minimum estimated character reduction required to replace history.",
+      "default": 0.25
+    },
+    "maxStateTokens": {
+      "type": "number",
+      "title": "Maximum state tokens",
+      "description": "Estimated token budget for the conversation state sent to Needle 3 (capped at 7000, under its 8192-token context).",
+      "default": 7000
+    },
+    "maxRequestTokens": {
+      "type": "number",
+      "title": "Maximum request tokens",
+      "description": "Estimated token budget for state plus questions in one request.",
+      "default": 30000
+    },
+    "truncateHeadChars": {
+      "type": "number",
+      "title": "Truncated tool result head",
+      "description": "Characters of a tool result kept when its full output is no longer needed; 0 keeps only the note.",
+      "default": 300
+    },
+    "cactPath": {
+      "type": "string",
+      "title": "Checkpoint path",
+      "description": "Path to a needle3.cact checkpoint. Omit to use the auto-downloaded weights."
     }
-  ]
+  }
 }

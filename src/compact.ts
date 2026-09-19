@@ -1,14 +1,14 @@
-import { noulAnswer } from './request.js';
 import { collectToolCalls, estimateTokens, fitState } from './state.js';
 import type {
+  Answer,
+  Asker,
   CallAnswer,
   CallDecision,
   CompactOptions,
   CompactResult,
   CompactionState,
-  JevAsker,
-  JevQuestions,
   Message,
+  Questions,
   ResolvedCompactOptions,
   ToolCall,
   ToolUse,
@@ -28,6 +28,23 @@ const REQUEST_OVERHEAD_TOKENS = 20;
 
 function finite(value: number | undefined, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+/** The `noul` probability of one answer; throws when it is not there. */
+function noulAnswer(
+  answers: Record<string, Answer>,
+  name: string,
+): number {
+  const answer = answers[name];
+  if (
+    !answer ||
+    !('noul' in answer) ||
+    typeof answer.noul !== 'number' ||
+    !Number.isFinite(answer.noul)
+  ) {
+    throw new Error(`Invalid answer for ${name}`);
+  }
+  return answer.noul;
 }
 
 export function resolveOptions(options: CompactOptions = {}): ResolvedCompactOptions {
@@ -53,7 +70,7 @@ export function resolveOptions(options: CompactOptions = {}): ResolvedCompactOpt
 }
 
 /** The two `noul` questions asked about one call: keep the call, keep its result. */
-export function questionsFor(call: ToolCall): JevQuestions {
+export function questionsFor(call: ToolCall): Questions {
   return {
     [`call_${call.id}`]: {
       type: 'noul',
@@ -115,11 +132,11 @@ export function decideCall(
 }
 
 async function askBatch(
-  asker: JevAsker,
+  asker: Asker,
   state: CompactionState,
   batch: readonly ToolCall[],
 ): Promise<Map<string, CallAnswer>> {
-  const questions: JevQuestions = Object.assign({}, ...batch.map(questionsFor));
+  const questions: Questions = Object.assign({}, ...batch.map(questionsFor));
   const { answers } = await asker.ask(state, questions);
   return new Map(
     batch.map((call) => [
@@ -248,15 +265,15 @@ function count(decisions: readonly CallDecision[], reason: CallDecision['reason'
 }
 
 /**
- * Compacts a transcript by asking Jev, for every tool call outside the pinned
- * first and newest messages, whether the call and whether its result must
- * stay. The whole history (results omitted, fitted into `maxStateTokens`) is
- * sent as state with every batch of questions. Throws when Jev fails or the
- * history cannot be fitted; the caller decides whether to fall back.
+ * Compacts a transcript by asking the asker, for every tool call outside the
+ * pinned first and newest messages, whether the call and whether its result
+ * must stay. The whole history (results omitted, fitted into `maxStateTokens`)
+ * is sent as state with every batch of questions. Throws when the asker fails
+ * or the history cannot be fitted; the caller decides whether to fall back.
  */
 export async function compact(
   messages: readonly Message[],
-  asker: JevAsker,
+  asker: Asker,
   options: CompactOptions = {},
 ): Promise<CompactResult> {
   const started = Date.now();

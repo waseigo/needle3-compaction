@@ -6,7 +6,11 @@ import {
   resolveHookConfig,
   summarize,
   toSessionMessages,
-} from '../hooks/fast-jev.ts';
+} from '../hooks/needle3.ts';
+import {
+  NeedleAsker,
+  type NeedleEngine,
+} from '../src/index.js';
 import { applyDecisions, collectToolCalls, decideCall, type Message } from '../src/index.js';
 
 type SessionMessage = Message & { handle?: string };
@@ -40,31 +44,61 @@ function transcript(): SessionMessage[] {
   ];
 }
 
-function jevFetch(answer: (name: string) => number, bodies: string[] = []) {
-  return async (_url: string, init?: { body?: string }) => {
-    bodies.push(init?.body ?? '');
-    const { questions } = JSON.parse(init?.body ?? '{}') as { questions: Record<string, unknown> };
-    const answers = Object.fromEntries(
-      Object.keys(questions).map((key) => [key, { type: 'noul', noul: answer(key) }]),
-    );
-    return { status: 200, ok: true, text: JSON.stringify({ answers }) };
+/** A fake Needle 3 engine that returns the given decide-tool payload. */
+function fakeNeedleEngine(
+  decisions: Record<string, { keep_call: boolean; keep_result: boolean }>,
+  confidence: number | undefined = 0.9,
+): NeedleEngine {
+  return {
+    run: () => 'reasoning',
+    runJson: () =>
+      JSON.stringify([
+        {
+          name: 'decide',
+          arguments: {
+            decisions: Object.entries(decisions).map(([id, d]) => ({ id, ...d })),
+          },
+        },
+      ]),
+    confidenceFor: () => confidence,
+    maxSeqLen: () => 8192,
   };
+}
+
+function needleAsker(
+  decisions: Record<string, { keep_call: boolean; keep_result: boolean }>,
+  confidence: number | undefined = 0.9,
+): NeedleAsker {
+  return new NeedleAsker({ engine: fakeNeedleEngine(decisions, confidence) });
 }
 
 describe('hook config', () => {
   it('reads userConfig values and falls back to defaults', () => {
-    expect(resolveHookConfig({})).toEqual({ compactAtPercent: 60, minReductionRatio: 0.25, model: 'jev-latest' });
+    expect(resolveHookConfig({})).toEqual({
+      compactAtPercent: 60,
+      minReductionRatio: 0.25,
+      maxStateTokens: 7000,
+    });
     expect(
-      resolveHookConfig({ apiKey: 'k', keepThreshold: 0.3, maxStateTokens: 1000, model: 'jev-x', goal: 'g', compactAtPercent: 'no' }),
+      resolveHookConfig({
+        keepThreshold: 0.3,
+        maxStateTokens: 1000,
+        cactPath: '/cact',
+        goal: 'g',
+        compactAtPercent: 'no',
+      }),
     ).toEqual({
-      apiKey: 'k',
       keepThreshold: 0.3,
       maxStateTokens: 1000,
-      model: 'jev-x',
+      cactPath: '/cact',
       goal: 'g',
       compactAtPercent: 60,
       minReductionRatio: 0.25,
     });
+  });
+
+  it("caps maxStateTokens at Needle 3's safe budget", () => {
+    expect(resolveHookConfig({ maxStateTokens: 25000 })).toMatchObject({ maxStateTokens: 7000 });
   });
 });
 
@@ -110,26 +144,33 @@ describe('session message mapping', () => {
 });
 
 describe('compactSession', () => {
-  it('runs the library over the engine fetch and reports the outcome', async () => {
-    const bodies: string[] = [];
-    const config = { ...resolveHookConfig({ preserveRecentMessages: 1 }), apiKey: 'k', model: 'jev-x' };
+  it('runs the library over the on-device asker and reports the outcome', async () => {
     const { result: output, messages } = await compactSession(
       transcript(),
-      config,
-      jevFetch((name) => (name === 'call_t2' || name === 'result_t2' ? 0.9 : 0.1), bodies),
+      { ...resolveHookConfig({ preserveRecentMessages: 1 }) },
+      needleAsker({
+        t1: { keep_call: false, keep_result: false },
+        t2: { keep_call: true, keep_result: true },
+      }),
     );
-    expect(bodies).toHaveLength(1);
-    expect(JSON.parse(bodies[0]!).model).toBe('jev-x');
     expect(output.decisions.map((d) => d.action)).toEqual(['drop_call', 'keep']);
     expect(messages.map((m) => m.handle)).toEqual(['h-0', 'h-tool-2', 'r-tool-2', 'h-5', 'h-6']);
-    expect(summarize(output)).toMatch(/^\d+% reduction; 1 kept, 1 call_dropped; state ~\d+ tokens \(full\) in 1 request\(s\)$/);
+    expect(summarize(output)).toMatch(
+      /^\d+% reduction; 1 kept, 1 call_dropped; state ~\d+ tokens \(full\) in 1 request\(s\)$/,
+    );
     expect(decisionLog(output)).toBe('t1:Read:drop_call/call=0.10/result=0.10 t2:Bash:keep/call=0.90/result=0.90');
     expect(decisionLogLines(output)).toEqual([`decisions: ${decisionLog(output)}`]);
   });
 
   it('splits a long decision log into ui.log lines under the host limit', async () => {
-    const config = { ...resolveHookConfig({ preserveRecentMessages: 1 }), apiKey: 'k' };
-    const { result: output } = await compactSession(transcript(), config, jevFetch(() => 0.1));
+    const { result: output } = await compactSession(
+      transcript(),
+      { ...resolveHookConfig({ preserveRecentMessages: 1 }) },
+      needleAsker({
+        t1: { keep_call: false, keep_result: false },
+        t2: { keep_call: false, keep_result: false },
+      }),
+    );
     const lines = decisionLogLines(output, 60);
     expect(lines).toEqual([
       'decisions (1/2): t1:Read:drop_call/call=0.10/result=0.10',
@@ -139,11 +180,21 @@ describe('compactSession', () => {
     expect(decisionLogLines({ ...output, decisions: [] })).toEqual(['decisions: (none)']);
   });
 
-  it('throws on a missing key and on failed requests so the hook falls back', async () => {
-    const config = resolveHookConfig({ preserveRecentMessages: 1 });
-    await expect(compactSession(transcript(), config, jevFetch(() => 0))).rejects.toThrow(/TYPESAFE_API_KEY/);
+  it('throws when the engine fails so the hook can fall back', async () => {
+    const badEngine: NeedleEngine = {
+      run: () => {
+        throw new Error('wasm boom');
+      },
+      runJson: () => '',
+      confidenceFor: () => 0.9,
+      maxSeqLen: () => 8192,
+    };
     await expect(
-      compactSession(transcript(), { ...config, apiKey: 'k' }, async () => ({ status: 500, ok: false, text: 'x' })),
-    ).rejects.toThrow(/500/);
+      compactSession(
+        transcript(),
+        resolveHookConfig({ preserveRecentMessages: 1 }),
+        new NeedleAsker({ engine: badEngine }),
+      ),
+    ).rejects.toThrow(/wasm boom/);
   });
 });

@@ -2,10 +2,10 @@ import { estimateTokens } from './state.js';
 import type {
   CompactionState,
   HistoryEntry,
-  JevAsker,
-  JevQuestions,
-  JevResponse,
-  JevState,
+  Asker,
+  Questions,
+  Response,
+  State,
 } from './types.js';
 
 /**
@@ -51,7 +51,7 @@ export interface NeedleAskerOptions {
 }
 
 /**
- * A `JevAsker` that asks **Cactus Needle 3** (on-device, CPU, no API key) to
+ * An `Asker` that asks **Cactus Needle 3** (on-device, CPU, no API key) to
  * decide which tool calls and results to keep. Needle 3 is a tool-calling /
  * structured-extraction model, so each batch of `noul` questions is posed as a
  * single `decide` tool call: it returns one `{ keep_call, keep_result }` per
@@ -65,7 +65,7 @@ export interface NeedleAskerOptions {
  * unsure answer near the `keepThreshold`. A call Needle declines to decide is
  * kept (conservative): compaction only ever drops what it is confident about.
  */
-export class NeedleAsker implements JevAsker {
+export class NeedleAsker implements Asker {
   private readonly engine: NeedleEngine | undefined;
   private readonly pending: Promise<NeedleEngine> | undefined;
 
@@ -80,7 +80,7 @@ export class NeedleAsker implements JevAsker {
     return Math.max(1, seq - 256);
   }
 
-  async ask(state: JevState, questions: JevQuestions): Promise<JevResponse> {
+  async ask(state: State, questions: Questions): Promise<Response> {
     const engine = this.engine ?? (await this.pending);
     if (!engine) throw new Error('NeedleAsker has no engine');
     const cs = toCompactionState(state);
@@ -263,7 +263,7 @@ async function ensureWeights(cactPath: string): Promise<void> {
 /* Query / schema construction                                                */
 /* -------------------------------------------------------------------------- */
 
-function toCompactionState(state: JevState): CompactionState {
+function toCompactionState(state: State): CompactionState {
   if (typeof state === 'string') return { context: state, goal: '', history: [] };
   return state as CompactionState;
 }
@@ -359,7 +359,7 @@ function callLine(state: CompactionState, id: string): string | null {
 /* Question-name -> call-id helpers                                           */
 /* -------------------------------------------------------------------------- */
 
-function extractCallIds(questions: JevQuestions): string[] {
+function extractCallIds(questions: Questions): string[] {
   const ids = new Set<string>();
   for (const name of Object.keys(questions)) {
     const id = callIdFromQuestion(name);

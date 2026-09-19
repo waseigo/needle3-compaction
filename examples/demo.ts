@@ -1,4 +1,4 @@
-import { compactMessages, reductionRatio, type Message } from '../src/index.js';
+import { compactMessagesNeedle, reductionRatio, type Message } from '../src/index.js';
 
 let n = 0;
 function call(tool: string, input: Record<string, unknown>, output: string, isError = false): Message[] {
@@ -48,7 +48,7 @@ const messages: Message[] = [
   user('Great. Next, add a changelog entry for this fix.'),
 ];
 
-const result = await compactMessages(messages, { preserveRecentMessages: 2 });
+const result = await compactMessagesNeedle(messages, { preserveRecentMessages: 2 });
 
 console.log('id | tool | action | keep call | keep result');
 for (const d of result.decisions) {

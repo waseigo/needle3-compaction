@@ -48,7 +48,12 @@ const messages: Message[] = [
   user('Great. Next, add a changelog entry for this fix.'),
 ];
 
-const result = await compactMessagesNeedle(messages, { preserveRecentMessages: 2 });
+// useConfidence: false skips the confidence head (run() + confidenceFor()) and
+// the run() that feeds it, dropping to a single runJson() pass — ~3x faster.
+const result = await compactMessagesNeedle(messages, {
+  preserveRecentMessages: 2,
+  useConfidence: false,
+});
 
 console.log('id | tool | action | keep call | keep result');
 for (const d of result.decisions) {

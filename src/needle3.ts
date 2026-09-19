@@ -48,6 +48,14 @@ export interface NeedleAskerOptions {
   engine?: NeedleEngine;
   /** Path to `needle3.cact` (default: `weights/needle3.cact` next to this file). */
   cactPath?: string;
+  /**
+   * Ask the model for a calibrated confidence head (extra forward pass) and
+   * fold it into the `noul` probabilities. Defaults to `true`. Set `false` to
+   * skip the confidence head and the `run()` call that feeds it, dropping to a
+   * single `runJson()` pass; decisions at the default `keepThreshold: 0.5` are
+   * unchanged, but the reported probabilities fall back to `0.9`/`0.1`.
+   */
+  useConfidence?: boolean;
 }
 
 /**
@@ -68,10 +76,12 @@ export interface NeedleAskerOptions {
 export class NeedleAsker implements Asker {
   private readonly engine: NeedleEngine | undefined;
   private readonly pending: Promise<NeedleEngine> | undefined;
+  private readonly useConfidence: boolean;
 
   constructor(options: NeedleAskerOptions = {}) {
     this.engine = options.engine;
     this.pending = options.engine ? undefined : loadNeedleEngine(options);
+    this.useConfidence = options.useConfidence ?? true;
   }
 
   /** The engine's hard context limit, with a little headroom for the schema. */
@@ -97,9 +107,17 @@ export class NeedleAsker implements Asker {
       );
     }
 
-    const completion = engine.run(query, toolsJson);
+    // `run()` exists only to feed the confidence head; when it is disabled we
+    // drop both it and `confidenceFor()`, leaving the single `runJson()` pass
+    // that actually drives the decisions. A missing head falls back to the
+    // `0.9`/`0.1` confident defaults in `toNoul`.
+    let completion: string | undefined;
+    let confidence: number | undefined;
+    if (this.useConfidence) {
+      completion = engine.run(query, toolsJson);
+      confidence = engine.confidenceFor(query, toolsJson, completion);
+    }
     const payload = engine.runJson(query, toolsJson);
-    const confidence = engine.confidenceFor(query, toolsJson, completion);
     const decisions = parseDecisions(payload);
     const byId = new Map(decisions.map((d) => [d.id, d]));
 

@@ -127,4 +127,57 @@ describe('NeedleAsker.ask', () => {
       asker.ask(huge, { call_t1: { type: 'noul', instructions: 'x' } }),
     ).rejects.toThrow(/too large/);
   });
+
+  it('skips run() and confidenceFor() when useConfidence is false', async () => {
+    let runCalls = 0;
+    let confidenceCalls = 0;
+    const asker = new NeedleAsker({
+      engine: {
+        run: () => {
+          runCalls += 1;
+          return 'reasoning';
+        },
+        runJson: () =>
+          '[{"name":"decide","arguments":{"decisions":[{"id":"t1","keep_call":true,"keep_result":false}]}}]',
+        confidenceFor: () => {
+          confidenceCalls += 1;
+          return 0.95;
+        },
+        maxSeqLen: () => 8192,
+      },
+      useConfidence: false,
+    });
+    const res = await asker.ask(state, {
+      call_t1: { type: 'noul', instructions: 'x' },
+      result_t1: { type: 'noul', instructions: 'x' },
+    });
+    expect(runCalls).toBe(0);
+    expect(confidenceCalls).toBe(0);
+    // No head: confident defaults (0.9 keep / 0.1 drop) instead of calibrated.
+    expect(res.answers.call_t1.noul).toBeCloseTo(0.9);
+    expect(res.answers.result_t1.noul).toBeCloseTo(0.1);
+  });
+
+  it('uses the confidence head by default', async () => {
+    let runCalls = 0;
+    const asker = new NeedleAsker({
+      engine: {
+        run: () => {
+          runCalls += 1;
+          return 'reasoning';
+        },
+        runJson: () =>
+          '[{"name":"decide","arguments":{"decisions":[{"id":"t1","keep_call":true,"keep_result":false}]}}]',
+        confidenceFor: () => 0.95,
+        maxSeqLen: () => 8192,
+      },
+    });
+    const res = await asker.ask(state, {
+      call_t1: { type: 'noul', instructions: 'x' },
+      result_t1: { type: 'noul', instructions: 'x' },
+    });
+    expect(runCalls).toBe(1);
+    expect(res.answers.call_t1.noul).toBeCloseTo(0.95);
+    expect(res.answers.result_t1.noul).toBeCloseTo(0.05);
+  });
 });

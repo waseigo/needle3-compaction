@@ -16,6 +16,10 @@ export async function compactMessagesNeedle(
   options: CompactMessagesNeedleOptions = {},
 ): Promise<CompactResult> {
   const maxStateTokens = options.maxStateTokens ?? 7000;
-  const asker = new NeedleAsker({ engine: options.engine, cactPath: options.cactPath });
+  const asker = new NeedleAsker({
+    engine: options.engine,
+    cactPath: options.cactPath,
+    useConfidence: options.useConfidence,
+  });
   return compact(messages, asker, { ...options, maxStateTokens });
 }

@@ -167,6 +167,26 @@ const result = await compactMessagesNeedle(transcript, {
 4. A call Needle declines to decide is **kept** (conservative): compaction only
    ever drops what it is confident about.
 
+### Speed
+
+On CPU, each forward pass over the state costs several seconds, and the default
+path makes **three** of them per call: `run()` (full completion), `runJson()`
+(structured decisions), and `confidenceFor()` (the calibrated head). The
+confidence head is a single scalar applied uniformly to every call in a batch,
+so for the default `keepThreshold: 0.5` it does not change which calls are
+dropped — only how confident the reported probabilities look. Set
+`useConfidence: false` to drop the confidence head and the `run()` that feeds
+it, leaving just the single `runJson()` pass. That roughly triples throughput
+with no change to the default decisions; the reported probabilities fall back
+to `0.9` / `0.1`.
+
+```ts
+const result = await compactMessagesNeedle(transcript, {
+  preserveRecentMessages: 4,
+  useConfidence: false, // skip the confidence head (faster); default is true
+});
+```
+
 ### Weights
 
 The 35.3 MB `needle3.cact` checkpoint is **not committed** to the repo. It is

@@ -32,38 +32,45 @@ built-in compaction summary with the original messages.
 1. Every `tool_use` is paired with its `tool_result` by `tool_use_id`. Calls in
    the first message or in the newest `preserveRecentMessages` messages are
    pinned and never touched.
-2. The **state** sent to Jev is the whole conversation so far, oldest first,
-   with every tool result replaced by a short note (`ok, 4213 chars (omitted)`).
-   Tool inputs are included, texts are included, nothing is summarized.
-3. The state is fitted into `maxStateTokens` (25k by default) in stages, each
-   applied only if the previous one was not enough: tool inputs truncated to
-   1000, then 200, then 60 characters; long texts abridged to head + tail,
-   oldest non-pinned messages first; old non-pinned messages collapsed to a
-   `[… N chars omitted …]` note; old tool calls reduced to one line each
-   (`t12 Read file_path=src/a.ts → ok 480ch`); old call-less messages left
-   out; runs of old call-only messages folded into one entry. If it still
-   does not fit, compaction throws. Tokens are estimated without a tokenizer (a
-   word per six letters, half a token per digit, ~one per other symbol),
-   calibrated to land a little above the counts Jev reports.
-4. For every non-pinned call Jev gets two `noul` questions: should the **call**
+2. The **state** sent to the judge is the whole conversation so far, oldest
+   first, with every tool result replaced by a short note (`ok, 4213 chars
+   (omitted)`). Tool inputs are included, texts are included, nothing is
+   summarized.
+3. The state is fitted into `maxStateTokens` in stages, each applied only if
+   the previous one was not enough: tool inputs truncated to 1000, then 200,
+   then 60 characters; long texts abridged to head + tail, oldest non-pinned
+   messages first; old non-pinned messages collapsed to a `[… N chars omitted
+   …]` note; old tool calls reduced to one line each (`t12 Read file_path=src/a.ts
+   → ok 480ch`); old call-less messages left out; runs of old call-only messages
+   folded into one entry. If it still does not fit, compaction throws. Tokens
+   are estimated without a tokenizer (a word per six letters, half a token per
+   digit, ~one per other symbol).
+4. For every non-pinned call the judge gets two questions: should the **call**
    stay (knowing it was made, with its input, still matters), and should the
    **result** stay verbatim (its contents are still needed and re-running the
    tool would not do).
-5. Questions are split into as many requests as needed so state plus questions
-   stays under `maxRequestTokens` (30k by default, under Jev's 32k request
-   limit). The same full state is resent with every request; requests run
-   concurrently and their answers are merged.
-6. Decisions per call, against `keepThreshold`:
+5. Decisions per call, against `keepThreshold`:
    - `keepResult ≥ threshold` → keep call and result;
    - else `keepCall ≥ threshold` → keep the call, truncate the result to its
      first `truncateHeadChars` characters plus a one-line note;
    - else → remove the call together with its result.
-7. The message list is rebuilt: a message that loses all its content is
+6. The message list is rebuilt: a message that loses all its content is
    removed, untouched messages are returned as the same objects, and no result
    is ever left without its call.
 
-Jev failures, malformed answers, a missing key, or a history that cannot be
-fitted throw; the caller (or the Claude Code hook) decides what to fall back to.
+The two judges differ in how they're asked and how much they can hold:
+
+- **Jev** (`compactMessages`) — the state is split into requests so each stays
+  under `maxRequestTokens` (30k by default, under Jev's 32k limit); per-call
+  `noul` questions; needs `apiKey`/`model`/`baseUrl`.
+- **Cactus Needle 3** (`compactMessagesNeedle`) — one `decide` tool call over
+  the whole state, capped at `maxStateTokens: 7000` under Needle 3's hard
+  8192-token context; uses a calibrated confidence head; no API key. See
+  [Cactus Needle 3](#cactus-needle-3-on-device-no-api-key) for details.
+
+Judge failures, malformed answers, a missing key (Jev only), or a history that
+cannot be fitted throw; the caller (or the Claude Code hook) decides what to
+fall back to.
 
 ## Install and usage
 
@@ -112,6 +119,11 @@ put it in a source file.
 
 ## Options
 
+The options below are for the Jev path (`compactMessages`). For the Needle 3
+path (`compactMessagesNeedle`), `maxStateTokens` defaults to `7000` (under
+Needle 3's 8192 ceiling), there is no `maxRequestTokens` (one request), and
+`cactPath` points at the checkpoint.
+
 | Option | Default | Description |
 | --- | --- | --- |
 | `apiKey` | `TYPESAFE_API_KEY` | TypeSafe API key (`compactMessages`/`JevClient`) |
@@ -132,7 +144,8 @@ stage was needed, and the number of requests.
 ## Limitations
 
 - Only tool calls and results are candidates; text messages are never removed
-  or shortened in the output (they are only abridged in the state Jev sees).
+  or shortened in the output (they are only abridged in the state the judge
+  sees).
 - Token sizes are estimates from character counts, not a tokenizer.
 - Calibration is at the request level; a probability is not a proof that a
   result is safe to delete. The assistant can always re-run the tool.
@@ -207,6 +220,10 @@ falls back to Claude Code's built-in summary on errors or insufficient
 reduction. See [`hooks/README.md`](hooks/README.md) for configuration and the
 Claude Code 2.1.274 type reference.
 
+Note: the Claude Code hook drives the **Jev** path (it needs the API key). The
+on-device **Needle 3** path is exposed via the library
+(`compactMessagesNeedle`) and the [Pi extension](#pi-extension-prime-target).
+
 ### Install in Claude Code
 
 Function hooks are an early-access Claude Code feature (2.1.274+), so the
@@ -248,8 +265,8 @@ npm run download-weights # fetch the Needle 3 checkpoint (optional)
 TYPESAFE_API_KEY="$(cat ~/.typesafe_key)" npm run demo
 ```
 
-The unit tests use a fake Jev and never contact TypeSafe. The demo is the live
-network check.
+The unit tests use fake engines and never contact TypeSafe or Hugging Face.
+The demo is the live network check.
 
 ## Animated demo (macOS)
 

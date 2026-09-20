@@ -199,4 +199,19 @@ export interface Response {
 /** Anything that can answer the questions: `NeedleAsker`, or a host-provided adapter. */
 export interface Asker {
   ask(state: State, questions: Questions): Promise<Response>;
+  /**
+   * Optional hard context ceiling (in estimated tokens) this asker accepts for
+   * one request. When present, `compact` caps each batch so the request fits;
+   * when absent, `compact` falls back to `maxRequestTokens`. Lets an asker that
+   * owns a fixed context (like Needle 3's 8192) keep its batches within it even
+   * when the generic `maxRequestTokens` default is larger.
+   */
+  maxInputTokens?: () => number;
+  /**
+   * Optional: split the candidate calls into batches that fit one request. When
+   * an asker implements it, `compact` uses it (it knows the asker's exact
+   * per-request shape); otherwise `compact` falls back to the generic
+   * `batchCalls`. Batches returned here are asked verbatim.
+   */
+  planBatches?: (state: CompactionState, calls: readonly ToolCall[]) => ToolCall[][];
 }

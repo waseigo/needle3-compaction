@@ -187,6 +187,39 @@ const result = await compactMessagesNeedle(transcript, {
 });
 ```
 
+### Scaling to a large context
+
+Compacting a big window (say ~180k tokens) is cheap in the way that matters: the
+raw 180k is **never** sent to the model. `fitState()` compresses the whole
+transcript into a state ≤ `maxStateTokens` (7000) in one O(N) pass with no model
+call, so the input's token count does not by itself drive the cost. What drives
+it is the **number of tool calls** and the **size of the fitted state**:
+
+- **Fits to a bounded state.** `fitState()` shrinks tool inputs, abridges long
+  texts, and collapses and folds old entries until it is under 7000 tokens. It
+  only throws when the transcript is too dense to fit even after every shrink
+  stage has run — in practice a few hundred uniform tool calls already fill 7000
+  tokens — in which case compaction throws and the caller falls back to the
+  built-in summary.
+- **Batches scale with the call count, not the token count.** The fitted state is
+  re-sent with every batch of questions, and each batch must fit Needle 3's
+  8192 ceiling (the effective per-request limit `maxInputTokens` is 7936). Near
+  the 7000-state cap only ~15 calls fit per batch, so `#batches ≈ #calls / 15`
+  and each batch is one request.
+- **Forward passes = batches × passes per request.** The default path makes
+  three passes per request (`run`, `runJson`, `confidenceFor`); `useConfidence:
+  false` drops to one.
+- **Per-pass cost grows faster than linearly with the state.** On the native
+  backend it is ~4.7 s/pass at a 1139-token state and ~40 s/pass at 3831 tokens
+  (roughly state^1.8). Extrapolating to the 7000-token cap, one pass is on the
+  order of a couple of minutes.
+
+So a ~180k window with a few hundred tool calls sits near the 7000 cap, splits
+into a few dozen batches, and costs on the order of **tens of minutes to a
+couple of hours** on CPU. The native backend stays ~10× ahead of WASM (which is
+~60 s/pass even at small states); `useConfidence: false` cuts the wall time to
+roughly a third.
+
 ### Native build (fast path)
 
 The WASM runtime is portable, but a 2-bit quantized model is a flood of scalar

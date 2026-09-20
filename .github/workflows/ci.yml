@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Builds the native x64 addon (the fast path) and runs the full suite against
+# it. The WASM path is covered on every platform by `npm test`; this job pins
+# the node-gyp + needle-c cargo build that the addon depends on.
+jobs:
+  native:
+    name: Native addon (x64) + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # node-gyp needs a C++ toolchain (present on ubuntu-latest); cargo is not,
+      # so install Rust to build the needle-c C ABI shared library.
+      - name: Set up Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf \
+            | sh -s -- -y --default-toolchain stable --profile minimal
+
+      - name: Install dependencies
+        run: npm install
+
+      # build.sh vendors the needle-c cdylib from a needle-rs checkout at
+      # /tmp/needle-rs (its default NEEDLE_RS). The checkout carries the
+      # `needle-c` crate and its `include/needle.h`.
+      - name: Checkout needle-rs (needle-c C ABI)
+        uses: actions/checkout@v4
+        with:
+          repo: geekgineer/needle-rs
+          path: /tmp/needle-rs
+          submodules: recursive
+
+      # The native smoke test (tests/native.test.ts) loads the real container,
+      # so fetch the ~35 MB checkpoint before the build runs.
+      - name: Download Needle 3 weights
+        run: npm run download-weights
+
+      - name: Build native addon
+        run: npm run build:native
+
+      - name: Verify native addon built
+        run: test -f native/build/Release/native.node
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test (native backend)
+        run: npm test
+
+      - name: Demo (end-to-end on native)
+        run: npm run demo

@@ -288,7 +288,17 @@ export async function compact(
   if (candidates.length > 0) {
     const state = fitState(messages, calls, resolved);
     fitted = state;
-    batches = batchCalls(candidates, state.tokens, resolved);
+    // An asker that owns a fixed context ceiling (e.g. Needle 3's 8192) can size
+    // its own batches with the exact request shape it sends; otherwise fall back
+    // to the generic splitter capped at the smaller of the two ceilings.
+    const ceiling = Math.min(
+      resolved.maxRequestTokens,
+      asker.maxInputTokens?.() ?? resolved.maxRequestTokens,
+    );
+    batches =
+      typeof asker.planBatches === 'function'
+        ? asker.planBatches(state.state, candidates)
+        : batchCalls(candidates, state.tokens, { maxRequestTokens: ceiling });
     const answered = await Promise.all(
       batches.map((batch) => askBatch(asker, state.state, batch)),
     );

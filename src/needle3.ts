@@ -7,6 +7,7 @@ import type {
   Questions,
   Response,
   State,
+  ToolCall,
 } from './types.js';
 
 /**
@@ -85,8 +86,12 @@ export class NeedleAsker implements Asker {
     this.useConfidence = options.useConfidence ?? true;
   }
 
-  /** The engine's hard context limit, with a little headroom for the schema. */
-  private maxInputTokens(): number {
+  /**
+   * The engine's hard context limit, with a little headroom for the tool
+   * schema (`maxSeqLen - 256`). Exposed so `compact()` can size batches to fit
+   * this ceiling instead of the generic `maxRequestTokens` default.
+   */
+  maxInputTokens(): number {
     const seq = this.engine?.maxSeqLen ? this.engine.maxSeqLen() : NEEDLE_MAX_TOKENS;
     return Math.max(1, seq - 256);
   }
@@ -139,6 +144,34 @@ export class NeedleAsker implements Asker {
       answers[qName] = { noul: toNoul(keep, confidence) };
     }
     return { answers, model: 'needle-3' };
+  }
+
+  /**
+   * Splits candidate calls into batches whose `decide` request fits this
+   * asker's context ceiling. It runs the *identical* size check `ask()`
+   * enforces (`estimateTokens(buildQuery) + estimateTokens(toolsJson) <=
+   * maxInputTokens`), so every batch is guaranteed to be accepted and no
+   * request is ever rejected mid-flight. `compact()` prefers this over the
+   * generic `batchCalls` when the asker exposes it, because the generic helper
+   * cannot know this asker's exact per-request shape.
+   */
+  planBatches(state: CompactionState, calls: readonly ToolCall[]): ToolCall[][] {
+    const toolsJson = decideToolSchema();
+    const limit = this.maxInputTokens();
+    const batches: ToolCall[][] = [];
+    let current: ToolCall[] = [];
+    for (const call of calls) {
+      const trial = [...current, call];
+      const total =
+        estimateTokens(buildQuery(state, trial.map((c) => c.id))) + estimateTokens(toolsJson);
+      if (current.length > 0 && total > limit) {
+        batches.push(current);
+        current = [];
+      }
+      current.push(call);
+    }
+    if (current.length > 0) batches.push(current);
+    return batches;
   }
 }
 

@@ -85,6 +85,68 @@ const state: any = {
   ],
 };
 
+describe('NeedleAsker.planBatches', () => {
+  // A fitted state with many call-only entries: large enough that the whole
+  // decide request does not fit Needle's 8192-token context in one batch.
+  function manyCallsState(n: number): any {
+    const history = Array.from({ length: n }, (_, i) => ({
+      i,
+      role: 'assistant' as const,
+      text: '',
+      tool_calls: [
+        {
+          id: `t${i}`,
+          tool: 'Read',
+          input: { file_path: `/repo/src/module-${i}.ts` },
+          result: 'ok, 480 chars (omitted)',
+        },
+      ],
+    }));
+    return { context: 'state', goal: '', history };
+  }
+
+  function calls(n: number) {
+    return Array.from({ length: n }, (_, i) => ({
+      id: `t${i}`,
+      tool_use_id: `tool-${i}`,
+      tool: 'Read',
+      input: {},
+      callIndex: i,
+      resultIndex: i,
+      resultChars: 100,
+      isError: false,
+      pinned: false,
+    }));
+  }
+
+  it('keeps every call exactly once across the batches', () => {
+    const asker = new NeedleAsker({ engine: fakeEngine('[]') });
+    const list = calls(200);
+    const batches = asker.planBatches(manyCallsState(200), list);
+    expect(batches.flat().map((c) => c.id)).toEqual(list.map((c) => c.id));
+  });
+
+  it('splits when the state leaves little room (does not pack all into one)', () => {
+    const asker = new NeedleAsker({ engine: fakeEngine('[]') });
+    const list = calls(200);
+    const batches = asker.planBatches(manyCallsState(200), list);
+    // The generic batchCalls against the 30000 default would put all in one
+    // request that overflows the 7936 ceiling; planBatches must not.
+    expect(batches.length).toBeGreaterThan(1);
+    // Each batch is non-empty and the last is the remainder.
+    expect(batches.every((b) => b.length > 0)).toBe(true);
+    expect(batches.reduce((sum, b) => sum + b.length, 0)).toBe(200);
+  });
+
+  it('puts everything in one batch when it fits', () => {
+    const asker = new NeedleAsker({ engine: fakeEngine('[]') });
+    const list = calls(5);
+    const batches = asker.planBatches(state, list);
+    expect(batches).toHaveLength(1);
+    expect(batches[0]).toHaveLength(5);
+  });
+});
+
 describe('NeedleAsker.ask', () => {
   it('maps keep/drop decisions to noul using confidence', async () => {
     const asker = new NeedleAsker({

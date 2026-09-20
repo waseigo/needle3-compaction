@@ -13,6 +13,18 @@ no network, nothing leaves the machine.
 This repo is a fork of [tamaratran/fast-jev-compaction](https://github.com/tamaratran/fast-jev-compaction),
 re-pointed at Needle 3 so the compaction runs locally. [Attribution](#attribution).
 
+> ## ⚠ Status: abandoned
+>
+> This project was built out and verified working, but it is **abandoned**. It
+> cannot meet the hard performance bar it was set against — verbatim compaction
+> of a **~200k-token context must finish under 60 s** on a **Ryzen 7 5700X** —
+> so it is being retired rather than shipped. The full reasoning, the measured
+> per-pass costs, what was tried and what was deliberately not tried, and the
+> GPU assessment are in [`docs/abandonment.md`](docs/abandonment.md); the
+> performance section below summarizes the result. **No source was changed for
+> the decision; the code is left intact and tested** in case the bar or
+> constraints change.
+
 ## What and why
 
 Most context compaction asks an LLM to summarize old turns. A summary is
@@ -219,6 +231,22 @@ into a few dozen batches, and costs on the order of **tens of minutes to a
 couple of hours** on CPU. The native backend stays ~10× ahead of WASM (which is
 ~60 s/pass even at small states); `useConfidence: false` cuts the wall time to
 roughly a third.
+
+**This is why the project is abandoned.** Against the bar of compacting a
+~200k window in under 60 s on a Ryzen 7 5700X, the numbers do not lie:
+
+- One forward pass at the real per-batch size (~7900 tokens) takes **~150 s on
+  one core** on that machine.
+- A dense ~200k session needs **~14** such passes (`useConfidence: false`), so
+  **~35 minutes** — about **35× over the 60 s bar**.
+- Batches do **not** parallelize: the native backend opens its own thread pool,
+  so 8 concurrent passes ran **4.7× slower** than one (oversubscription).
+- Slicing the 20-layer ladder to 2 layers gets to ~3.5 min (still 3.5× over)
+  and degrades the verbatim decisions that are the point of the project.
+
+There is also no production GPU path for this model/runtime (see
+[`docs/abandonment.md`](docs/abandonment.md)#4-gpu-assessment). The code is
+left intact and tested; see that document for the full investigation.
 
 ### Native build (fast path)
 

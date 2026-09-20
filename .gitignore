@@ -3,3 +3,7 @@ dist
 .env
 # ~35 MB Needle 3 checkpoint; auto-downloaded (see src/needle3.ts)
 weights/
+# Native addon build output (build with `npm run build:native`)
+native/build/
+# Platform-specific shared library (produced by cargo, linked by binding.gyp)
+native/lib/*.so

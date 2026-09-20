@@ -1,4 +1,5 @@
 import { estimateTokens } from './state.js';
+import { loadNativeEngine } from './native.js';
 import type {
   CompactionState,
   HistoryEntry,
@@ -142,20 +143,37 @@ export class NeedleAsker implements Asker {
 }
 
 /**
- * Loads the real Needle 3 engine from `needle-rs` (WASM, CPU, offline).
- * Requires the `needle-rs` package; the `needle3.cact` checkpoint is
+ * Loads the real Needle 3 engine, preferring the native x64 addon
+ * (`native/build/Release/native.node`, build with `npm run build:native`) and
+ * falling back to `needle-rs` (WASM, CPU, offline) when the addon is not
+ * available on this platform. Requires the `needle3.cact` checkpoint, which is
  * auto-downloaded from Hugging Face on first use if it is not already present.
- * Throws a clear error if either is missing, so callers can fall back to the
- * built-in summary instead of crashing.
+ * Throws a clear error if neither backend is available, so callers can fall
+ * back to the built-in summary instead of crashing.
  */
 export async function loadNeedleEngine(options: NeedleAskerOptions = {}): Promise<NeedleEngine> {
+  const cactPath = options.cactPath ?? defaultCactPath();
+  // Only the default path auto-downloads; a caller-supplied path must exist.
+  if (options.cactPath === undefined) {
+    await ensureWeights(cactPath);
+  }
+  const bytes = await readFileCact(cactPath);
+
+  // Prefer the native x64 build (fast); fall back to the WASM runtime when the
+  // addon is unavailable on this platform. The compaction decisions are
+  // identical either way, so switching never changes results.
+  const native = loadNativeEngine(bytes);
+  if (native) return native;
+
   let needle: any;
   try {
     needle = await import('needle-rs');
   } catch (error) {
     throw new Error(
-      `needle-rs is not installed. Run "npm install needle-rs" and download needle3.cact ` +
-        `to use the Needle 3 compaction path. ${error instanceof Error ? error.message : String(error)}`,
+      `Neither the native addon nor needle-rs (WASM) is available. Build the ` +
+        `native addon with "npm run build:native", or install "needle-rs" for ` +
+        `the portable WASM path, and download needle3.cact to use the Needle 3 ` +
+        `compaction path. ${error instanceof Error ? error.message : String(error)}`,
     );
   }
   const init = needle.default;
@@ -172,12 +190,6 @@ export async function loadNeedleEngine(options: NeedleAskerOptions = {}): Promis
   if (!NeedleV3Wasm?.load) {
     throw new Error('needle-rs does not export NeedleV3Wasm');
   }
-  const cactPath = options.cactPath ?? defaultCactPath();
-  // Only the default path auto-downloads; a caller-supplied path must exist.
-  if (options.cactPath === undefined) {
-    await ensureWeights(cactPath);
-  }
-  const bytes = await readFileCact(cactPath);
   const engine = NeedleV3Wasm.load(bytes);
   if (!engine) {
     throw new Error(`Failed to load Needle 3 from ${cactPath}`);

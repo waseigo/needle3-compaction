@@ -187,6 +187,34 @@ const result = await compactMessagesNeedle(transcript, {
 });
 ```
 
+### Native build (fast path)
+
+The WASM runtime is portable, but a 2-bit quantized model is a flood of scalar
+integer/bitwise matmuls that WASM cannot vectorize. The **native x64 build**
+runs those with the host CPU's SIMD and threads, which is substantially faster
+per forward pass than WASM on the same machine.
+
+`native/` is a node-gyp C++ addon (`binding.cc`) that wraps the `needle-rs`
+`needle-c` crate's stable C ABI (`needle.h`) and links the release cdylib built
+with the multi-threaded `parallel` feature. The compiled addon
+(`native/build/Release/native.node`) and the vendored `libneedle_c.so` are
+platform binaries, so they are **gitignored** — only the source
+(`binding.cc`, `binding.gyp`, `build.sh`) and the vendored `needle.h` header are
+committed.
+
+`src/needle3.ts` **autodetects** the backend: it tries the native addon first
+and falls back to the WASM runtime when the addon is missing, was not built, or
+is for the wrong platform/architecture. The compaction decisions are identical
+either way, so the switch never changes results — only how fast they are.
+
+```sh
+# Build the native addon (needs cargo, node-gyp, gcc, and a needle-rs checkout).
+npm run build:native
+```
+
+On a non-x64 platform (or before the addon is built) the addon fails to load and
+the library transparently uses WASM instead.
+
 ### Weights
 
 The 35.3 MB `needle3.cact` checkpoint is **not committed** to the repo. It is
@@ -261,6 +289,7 @@ npm install
 npm run typecheck        # library + hook
 npm test
 npm run build
+npm run build:native     # build the native x64 addon (optional; faster than WASM)
 npm run validate:plugin  # claude plugin validate
 npm run download-weights # fetch the Needle 3 checkpoint (optional)
 npm run demo

@@ -20,6 +20,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "build:native": "bash native/build.sh",
     "typecheck": "tsc --noEmit && npm run typecheck:hooks && npm run typecheck:pi",
     "typecheck:pi": "tsc -p tsconfig.pi.json",
     "test": "vitest run",
@@ -32,6 +33,7 @@
     "@earendil-works/pi-agent-core": "^0.85.1",
     "@earendil-works/pi-coding-agent": "^0.85.1",
     "@types/node": "^22.10.2",
+    "node-addon-api": "^8.9.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
